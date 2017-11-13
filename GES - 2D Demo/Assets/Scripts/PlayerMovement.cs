@@ -10,6 +10,8 @@ public class PlayerMovement : MonoBehaviour
 
     [SerializeField]
     float movementSpeed = 1f;
+    [SerializeField]
+    float airControl;
 
     [SerializeField]
     Transform groundDetectPoint;
@@ -20,28 +22,105 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField]
     LayerMask whatCountsAsGround;
 
-    private bool isOnGround;
+    bool isFacingRight = true;
 
+    private Animator anim;
+
+    private float originalMovementSpeed;
+    public float maxspeed=10;
+    private bool isOnGround;
+    AudioSource audioSource;
     Rigidbody2D myRigidbody;
-	// Use this for initialization
-	void Start ()
+    private float horizontalInput;
+    private bool shouldJump;
+    private Vector2 jumpForce;
+
+
+    //for shooting
+    public Transform rocketMuzzle;
+    public GameObject bullet;
+    [SerializeField]
+    float fireRate;
+    float nextFire = 0f;
+
+
+    // Use this for initialization
+    void Start ()
     {
+        originalMovementSpeed = movementSpeed;
         myRigidbody = GetComponent<Rigidbody2D>();
+        anim = GetComponent<Animator>();
+        jumpForce = new Vector2(0, jumpStrength);
+        audioSource = GetComponent<AudioSource>();
     }
 
     // Update is called once per frame
     void Update()
     {
+        GetMovementInput();
+        GetJumpInput();
         UpdateIsOnGround();
+        //player shooting
+        PlayerShoot();
+    }
+    private void PlayerShoot()
+    {
+        if (Input.GetAxisRaw("Fire1") > 0) fireBullet();
+    }
+    void fireBullet()
+    {
+        if (Time.time > nextFire)
+        {
+            nextFire = Time.time + fireRate;
+            if (isFacingRight)
+            {
+                Instantiate(bullet, rocketMuzzle.position, Quaternion.Euler (new Vector3 (0,0,0)));
+            }
+            else if (!isFacingRight)
+            {
+                Instantiate(bullet, rocketMuzzle.position, Quaternion.Euler(new Vector3(0, 0, 180f)));
+            }
+        }
+    }
+    private void GetJumpInput()
+    {
+        if (Input.GetButtonDown("Jump") && isOnGround)
+        {
+            shouldJump = true;
+        }
+    }
+
+    private void GetMovementInput()
+    {
+        horizontalInput = Input.GetAxis("Horizontal");
+    }
+
+    private void FixedUpdate()
+    {
         Move();
         Jump();
+        PassVSpeed();
+        if (!isOnGround) return;
+    }
+
+    private void PassVSpeed()
+    {
+        anim.SetFloat("vSpeed", myRigidbody.velocity.y);
     }
 
     private void UpdateIsOnGround()
     {
         Collider2D[] groundObjects = Physics2D.OverlapCircleAll(groundDetectPoint.position, groundDetectRadius, whatCountsAsGround);
-
-        isOnGround = groundObjects.Length > 0;
+        anim.SetBool("Ground", isOnGround);
+        //isOnGround = groundObjects.Length > 0;
+        if (isOnGround)
+        {
+            anim.SetBool("Ground", true);
+        }
+        if (myRigidbody.velocity.y <0)
+        {
+            anim.SetBool("Ground", false);
+        }
     }
 
     private void OnCollisionEnter2D(Collision2D collision)
@@ -49,18 +128,49 @@ public class PlayerMovement : MonoBehaviour
         isOnGround = true;
     }
     private void Jump()
-    { 
-        if (Input.GetButtonDown("Jump")&& isOnGround)
+    {
+        if (shouldJump)
         {
-            myRigidbody.velocity = new Vector2(myRigidbody.velocity.x, jumpStrength);
+            anim.SetBool("Ground", false);
+            anim.SetFloat("vSpeed", myRigidbody.velocity.y);
+            myRigidbody.AddForce(jumpForce, ForceMode2D.Impulse);
+            //myRigidbody.velocity = new Vector2(myRigidbody.velocity.x, jumpStrength);
             isOnGround = false;
+            shouldJump = false;
+            audioSource.Play();
+            //audioSource.clip = ;
         }
     }
-
+    private void AdjustAirControl()
+    {
+        if (!isOnGround)
+        {
+            movementSpeed = originalMovementSpeed * airControl;//0-1
+        }
+        else
+        {
+            movementSpeed = originalMovementSpeed;
+        }
+    }
     private void Move()
     {
-        float horizontalInput = Input.GetAxis("Horizontal");
-        myRigidbody.velocity = new Vector2(horizontalInput * movementSpeed, myRigidbody.velocity.y);
-        Debug.Log("Horizontal input: " + horizontalInput);
+        if (Mathf.Abs(myRigidbody.velocity.x) < maxspeed )
+        {
+            myRigidbody.AddForce(new Vector2(horizontalInput * movementSpeed, 0), ForceMode2D.Impulse);
+        }
+        
+        //myRigidbody.velocity = new Vector2(horizontalInput * movementSpeed, myRigidbody.velocity.y);
+        anim.SetFloat("Speed", Mathf.Abs(horizontalInput));
+        if (horizontalInput > 0 && !isFacingRight)
+            Flip();
+        else if (horizontalInput < 0 && isFacingRight)
+            Flip();
+    }
+    private void Flip()
+    {
+        isFacingRight = !isFacingRight;
+        Vector3 theScale = transform.localScale;
+        theScale.x *= -1;
+        transform.localScale = theScale;
     }
 }
